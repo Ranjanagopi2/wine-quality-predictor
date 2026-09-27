@@ -112,22 +112,36 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH = os.path.join(BASE_DIR, 'data', 'winequality-red.csv')
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'wine_quality_model.joblib')
 
+import train_model
+
+def ensure_artifacts_exist():
+    """Ensure data and model artifacts are generated and present."""
+    if not os.path.exists(DATA_PATH) or not os.path.exists(MODEL_PATH):
+        st.info("Generating dataset and training ML model pipeline for the first run...")
+        train_model.train_and_save()
+
 @st.cache_data
 def load_dataset():
-    if os.path.exists(DATA_PATH):
-        df = pd.read_csv(DATA_PATH, sep=';' if ';' in open(DATA_PATH).readline() else ',')
+    ensure_artifacts_exist()
+    try:
+        with open(DATA_PATH, 'r', encoding='utf-8') as f:
+            first_line = f.readline()
+        sep = ';' if ';' in first_line else ','
+        df = pd.read_csv(DATA_PATH, sep=sep)
         return df
-    else:
-        st.error("Dataset not found! Please run `python train_model.py` first.")
-        st.stop()
+    except Exception as e:
+        train_model.train_and_save()
+        df = pd.read_csv(DATA_PATH)
+        return df
 
 @st.cache_resource
 def load_trained_pipeline():
-    if os.path.exists(MODEL_PATH):
+    ensure_artifacts_exist()
+    try:
         return joblib.load(MODEL_PATH)
-    else:
-        st.error("Saved model file not found! Please run `python train_model.py` to generate the model.")
-        st.stop()
+    except Exception as e:
+        train_model.train_and_save()
+        return joblib.load(MODEL_PATH)
 
 df = load_dataset()
 pipeline_data = load_trained_pipeline()
@@ -156,6 +170,14 @@ st.sidebar.title("🍇 Control Panel")
 
 st.sidebar.markdown(f"**Model Status**: `Ready ({saved_metrics.get('best_algorithm', 'Random Forest')})`")
 st.sidebar.markdown(f"**Model Accuracy**: `{saved_metrics.get('accuracy', 0):.2%}`")
+
+if st.sidebar.button("🔄 Auto-Retrain ML Model", help="Click to automatically retrain the machine learning model from scratch."):
+    with st.sidebar.status("Training model automatically...", expanded=True) as status:
+        train_model.train_and_save()
+        st.cache_data.clear()
+        st.cache_resource.clear()
+        status.update(label="Model Retrained Successfully!", state="complete", expanded=False)
+    st.rerun()
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Presets for Quick Testing")
